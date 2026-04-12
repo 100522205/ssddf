@@ -1,5 +1,8 @@
 from enum import Enum
 import argparse
+import socket
+import sys
+import threading
 
 class client :
 
@@ -12,8 +15,13 @@ class client :
         USER_ERROR = 2
 
     # ****************** ATTRIBUTES ******************
+    # IP y Puerto DEL SERVIDOR
     _server = None
     _port = -1
+    _thread_port = -1
+    _thread = -1
+    _continue = 1
+    _me = ""
 
     # ******************** METHODS *******************
     # *
@@ -24,8 +32,60 @@ class client :
     # * @return ERROR if another error occurred
     @staticmethod
     def  register(user) :
-        #  Write your code here
-        return client.RC.ERROR
+        #  Función para registrar un usuario en el sistema
+        
+        if(type(user)!=str):
+            print("Error en connect: Introduce el user como un string\n")
+            return client.RC.ERROR
+        
+        # primero, crear el socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            my_address= ('localhost', 0)
+            sock.bind(my_address)
+        except Exception as e:
+            print("Error en register: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+        
+        # ahora, conectar al servidor
+        try:
+            server_address= (client._server, client._port)
+            sock.connect(server_address)
+        except Exception as e:
+            print("Error en register: Fallo en conexión con servidor"+str(e))
+            sock.close()
+            return client.RC.ERROR
+        
+        # ahora, enviar REGISTER y el nombre
+        try:
+            messages=["REGISTER", user]
+            for m in messages:
+                sock.sendall((m+"\0").encode('utf-8'))
+        
+        except Exception as e:
+            print("Error en register: Fallo en envio de cadenas"+str(e))
+            sock.close()
+            return client.RC.ERROR
+        
+        # ahora, recibir el byte de resultado
+
+        try:
+            msg=sock.recv(1)
+            msg=int.from_bytes(msg, byteorder='big')
+            if msg==0:
+                print("REGISTER OK\n")
+            elif msg==1:
+                print("USERNAME IN USE\n")
+            else:
+                print("REGISTER FAIL")
+        except Exception as e:
+            print("Error en register: Fallo en recepción"+str(e))
+            sock.close()
+            return client.RC.ERROR
+        
+        client._me=user
+        sock.close()
+        return client.RC.OK
 
     # *
     # 	 * @param user - User name to unregister from the system
@@ -35,8 +95,58 @@ class client :
     # 	 * @return ERROR if another error occurred
     @staticmethod
     def  unregister(user) :
-        #  Write your code here
-        return client.RC.ERROR
+        #  Función para desregistrar un usuario en el sistema
+        
+        if(type(user)!=str or user!=client._me):
+            print("Error en unregister: Introduce el user como un string una vez estés registrado o conectado\n")
+            return client.RC.ERROR
+        
+        # primero, crear el socket
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            my_address= ('localhost', 0)
+            sock.bind(my_address)
+        except Exception as e:
+            print("Error en unregister: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+        
+        # ahora, conectar al servidor
+        try:
+            server_address= (client._server, client._port)
+            sock.connect(server_address)
+        except Exception as e:
+            sock.close()
+            print("Error en unregister: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+        
+        # ahora, enviar REGISTER y el nombre
+        try:
+            messages=["UNREGISTER", user]
+            for m in messages:
+                sock.sendall((m+"\0").encode('utf-8'))
+        
+        except Exception as e:
+            sock.close()
+            print("Error en unregister: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+        
+        # ahora, recibir el byte de resultado
+
+        try:
+            msg=sock.recv(1)
+            msg=int.from_bytes(msg, byteorder='big')
+            if msg==0:
+                print("UNREGISTER OK\n")
+            elif msg==1:
+                print("USER DOES NOT EXIST\n")
+            else:
+                print("UNREGISTER FAIL\n")
+        except Exception as e:
+            sock.close()
+            print("Error en unregister: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        sock.close()
+        return client.RC.OK
 
 
     # *
@@ -47,8 +157,85 @@ class client :
     # * @return ERROR if another error occurred
     @staticmethod
     def  connect(user) :
-        #  Write your code here
-        return client.RC.ERROR
+        #  Funcion para conectarse al servidor
+
+        # testeo de parámetros
+
+        if(type(user)!=str):
+            print("Error en connect: Introduce el user como un string\n")
+            return client.RC.ERROR
+
+        # primero: creacion de sockets con adress
+        try:
+            # comunicación genérica
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock.bind(address)
+
+            #para el worker
+            sock_thread = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address_thread = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock_thread.bind(address_thread)
+            sock_thread.listen(10) # para recepcion de mas de 1
+
+
+        except Exception as e:
+            print("Error en connect: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+
+        # ahora, a la conexión
+
+        try:
+            address_servidor = (client._server, client._port)
+            sock.connect(address_servidor) # conecta SOLO EL QUE ENVIA, por eso el thread no
+
+        except Exception as e:
+            print("Error en connect: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+
+        # creacion del thread
+
+        client._thread= threading.Thread(target=client.worker, args=(sock_thread))
+        client._thread.start()
+        # ahora toca enviar dos cadenas, CONNECT y el nombre, y luego el puerto
+
+        try:
+            mensajes = ["CONNECT", user, str(sock_thread.getsockname()[1])]
+            for m in mensajes:
+                sock.sendall((m+"\0").encode('utf-8'))
+
+        except Exception as e:
+            sock.close()
+            print("Error en connect: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca recibir el byte de resultado
+
+        try:
+            msg=sock.recv(1)
+            msg=int.from_bytes(msg, byteorder='big')
+            
+            if msg!=2:
+                print("CONNECT "+user, end = "")
+            if 0== msg:
+                print("OK\n")
+            elif 1==msg:
+                print("FAIL, USER DOES NOT EXIST\n")
+            elif 2==msg:
+                print("USER ALREADY CONNECTED\n")
+            elif 3== msg:
+                print("CONNECT FAIL\n")
+            else:
+                print("UNEXPECTED!!!!\n")
+            
+        except Exception as e:
+            sock.close()
+            print("Error en connect: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        
+        sock.close()
+        client._me=user
+        return client.RC.OK
 
     # *
     # * 
@@ -70,8 +257,75 @@ class client :
     # * @return ERROR if another error occurred
     @staticmethod
     def  disconnect(user) :
-        #  Write your code here
-        return client.RC.ERROR
+        #  Funcion para desconectarse al servidor
+
+        # testeo de parámetros
+
+        if(type(user)!=str or user != client._me):
+            print("Error en disconnect: Introduce el user como un string y asegurate de estar conectado\n")
+            return client.RC.ERROR
+        
+        # antes de nada, matar el thread
+
+        client._continue=0
+
+        # ahora: creacion de sockets con adress
+        try:
+            # comunicación genérica
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock.bind(address)
+
+        except Exception as e:
+            print("Error en disconnect: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+
+        # ahora, a la conexión
+
+        try:
+            address_servidor = (client._server, client._port)
+            sock.connect(address_servidor)
+
+        except Exception as e:
+            print("Error en disconnect: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca enviar dos cadenas, CONNECT y el nombre
+
+        try:
+            mensajes = ["DISCONNECT", user]
+            for m in mensajes:
+                sock.sendall((m+"\0").encode('utf-8'))
+
+        except Exception as e:
+            sock.close()
+            print("Error en disconnect: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca recibir el byte de resultado
+
+        try:
+            msg=sock.recv(1)
+            msg=int.from_bytes(msg, 'big')
+            print("DISCONNECT ", end = "")
+            if 0== msg:
+                print("OK\n")
+            elif 1== msg:
+                print("DISCONNECT FAIL, USER DOES NOT EXIST\n")
+            elif 2== msg:
+                print("DISCONNECT FAIL, USER NOT CONNECTED\n")
+            elif 3== msg:
+                print("DISCONNECT FAIL\n")
+            else:
+                print("UNEXPECTED!!!!\n")
+            
+        except Exception as e:
+            sock.close()
+            print("Error en disconnect: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        
+        sock.close()
+        return client.RC.OK
 
     # *
     # * @param user    - Receiver user name
@@ -82,9 +336,69 @@ class client :
     # * @return ERROR the user does not exist or another error occurred
     @staticmethod
     def  send(user,  message) :
-        #  Write your code here
-        return client.RC.ERROR
+        #  Funcion para enviar un mensaje
 
+        # testeo de parámetros
+
+        if(type(user)!=str or type(message)!=str or len(message)>255):
+            print("Error en send: Introduce parámetros correctos\n")
+            return client.RC.ERROR
+
+        # ahora: creacion de sockets con adress
+        try:
+            # comunicación genérica
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock.bind(address)
+
+        except Exception as e:
+            print("Error en send: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+
+        # ahora, a la conexión
+
+        try:
+            address_servidor = (client._server, client._port)
+            sock.connect(address_servidor)
+
+        except Exception as e:
+            print("Error en send: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca enviar dos cadenas, CONNECT y el nombre
+
+        try:
+            mensajes = ["SEND", client._me, user, message]
+            for m in mensajes:
+                sock.sendall((m+"\0").encode('utf-8'))
+
+        except Exception as e:
+            sock.close()
+            print("Error en send: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca recibir el byte de resultado
+
+        try:
+            msg= int.to_bytes(sock.recv(1), byteorder='big')
+            
+            if 0==msg:
+                id_mensaje = client.read_string(sock)
+                print("SEND OK - MESSAGE " + str(id_mensaje))
+            elif 1==msg:
+                print("SEND FAIL, USER DOES NOT EXIST\n")
+            elif 2==msg:
+                print("SEND FAIL\n")
+            else:
+                print("UNEXPECTED!!!!\n")
+            
+        except Exception as e:
+            sock.close()
+            print("Error en send: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        
+        sock.close()
+        return client.RC.OK
     # *
     # * @param user    - Receiver user name
     # * @param file    - file  to be sent
@@ -95,8 +409,32 @@ class client :
     # * @return ERROR the user does not exist or another error occurred
     @staticmethod
     def  sendAttach(user,  file,  message) :
-        #  Write your code here
+        #  Aun no !
         return client.RC.ERROR
+    
+    # *
+    # * @param message - Message to be sent
+    # * 
+    # * @return OK if the server had successfully delivered the message
+
+    @staticmethod
+    def  worker(socket_th) :
+        #  Write your code here
+        while(client._continue):
+            socket, address=socket_th.accept()
+
+            operacion = client.read_string(socket)
+            if(operacion=="SEND_MESSAGE"):
+                remitente=client.read_string(socket)
+                my_id=client.read_string(socket)
+                contenido=client.read_string(socket)
+
+                print("MESSAGE "+str(my_id)+ " FROM "+str(remitente) + "\n"+str(contenido)+ "\nEND")
+            
+            socket.close()
+
+        socket_th.close()
+        return client.RC.OK
 
     # *
     # **
@@ -169,6 +507,22 @@ class client :
                 print("Exception: " + str(e))
 
     # *
+    # * @brief leer string entero
+    @staticmethod
+    def read_string(sock):
+        # para poder leer el string que llega desde el servidor
+        
+        string = b""
+        
+        while(1):
+            # leemos poco a pco
+            local = sock.recv(1)
+            if(not local or local==b'\0'):
+                break
+            string+=local
+        return string.decode('utf-8')
+    
+    # *
     # * @brief Prints program usage
     @staticmethod
     def usage() :
@@ -192,8 +546,8 @@ class client :
             parser.error("Error: Port must be in the range 1024 <= port <= 65535");
             return False;
         
-        _server = args.s
-        _port = args.p
+        client._server = args.s
+        client._port = args.p
 
         return True
 
