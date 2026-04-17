@@ -4,16 +4,14 @@
 #include "sock.h"
 #include "list.h"
 
+#define MAX_USERS 2048
+
 List database=NULL; // variable para manejar base de datos
 pthread_mutex_t mutex_db=PTHREAD_MUTEX_INITIALIZER;
+volatile sig_atomic_t shutdown_flag = 0;
 
 
-void manejador_sigint(int sig) {
-    printf("\n");
-    toFile(database, "database.txt");
-    destroy_list(&database);
-    exit(0);
-}
+void manejador_sigint(int sig) { shutdown_flag = 1; }
 
 
 int error(char * message, int cod) {
@@ -87,9 +85,6 @@ void * worker(void * argum) {
 
     buff[LENG-1] = '\0';
 
-    pthread_mutex_lock(&mutex_db);
-    /* seccion criticia */
-
     char op[LENG]={0};
     strcpy(op, buff);
 
@@ -100,13 +95,23 @@ void * worker(void * argum) {
         if (sock_receive(sd, userName, LENG)<0) goto error_register;
         
         /* 1. verificar usuario no registrado */
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         switch (exist)
         {
         /* 2a.1. almacenar usuario */
         case 0:
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (setNode(&database, userName, 0)!=0) goto error_register;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
 
         /* 2a.2. responder al cliente (0). guardar id de mnsj (0) */
             if (sock_send(sd, "0", 1)<0) goto error_register;
@@ -120,7 +125,7 @@ void * worker(void * argum) {
             break;
         }
 
-        goto end; // si llega aqui no ha habido "otros" errores
+        goto end_register; // si llega aqui no ha habido "otros" errores
 
         /* 2c. notificar error (2) : otros*/
         error_register:
@@ -128,7 +133,7 @@ void * worker(void * argum) {
             logs(op, userName, "FAIL");
             goto finish;
 
-        end:
+        end_register:
             logs(op, userName, "OK");
 
     } else if (strcmp(buff, "UNREGISTER")==0)
@@ -138,13 +143,23 @@ void * worker(void * argum) {
         if (sock_receive(sd, userName, LENG)<0) goto error_unregister;
 
         /* 1. verificar usuario registrado */
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         switch (exist)
         {
         /* 2a.1. borrar usuario */
         case 1:
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (del_user(&database, userName)!=0) goto error_unregister;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
 
         /* 2a.2. responder al cliente (0) */
             if (sock_send(sd, "0", 1)<0) goto error_unregister;
@@ -157,7 +172,7 @@ void * worker(void * argum) {
             break;
         }
 
-        goto end; // si llega aqui no ha habido "otros" errores
+        goto end_unregister; // si llega aqui no ha habido "otros" errores
 
         /* 2c. notificar error (2) : otros */
         error_unregister:
@@ -166,7 +181,7 @@ void * worker(void * argum) {
             goto finish;
 
         /* 3. borrar mensajes pendientes */
-        end:
+        end_unregister:
             // mensajes borrados en 2a.1
             logs(op, userName, "OK");
 
@@ -181,9 +196,20 @@ void * worker(void * argum) {
         if (sock_receive(sd, port, LENG)<0) goto error_connect;
 
         /* 2. buscar usuario */
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
+
         uint8_t conn;
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         if (get_conn(database, userName, &conn)!=0) goto error_connect;
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         switch (conn)
         {
@@ -192,16 +218,32 @@ void * worker(void * argum) {
             {
         /* 2a.1. rellenar IP y puerto */
             case 1:
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (set_ip_port(database, userName, ip, (uint16_t)atoi(port))!=0) goto error_connect;
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
 
         /* 2a.2. cambiar a conectado */
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (modify_conn(database, userName, 1)!=0) goto error_connect; // 1 conn ; 0 disconn   
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
 
         /* 2a.3. responder al cliente (0) */
                 if (sock_send(sd, "0", 1)<0) goto error_connect;
 
         /* 2a.4. enviar mensajes pendientes */
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 int n=get_num_pending(database, userName);
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
+
                 if (n==-1) goto error_connect;
                 else if (n!=0)
                 {
@@ -209,7 +251,12 @@ void * worker(void * argum) {
 
                     if (pending!=NULL)
                     {
+
+                        pthread_mutex_lock(&mutex_db);
+                        /* seccion criticia */
                         if (get_mssg_pending(database, userName, pending)!=0) goto error_connect;
+                        /* fin seccion critica */
+                        pthread_mutex_unlock(&mutex_db);
 
                         char sName[LENG]={0};
                         unsigned int id;
@@ -222,9 +269,21 @@ void * worker(void * argum) {
                             strcpy(msg, pending[i].msg);
 
                             if (send_message(sName, userName, id, msg)!=0) goto error_connect;
+
+                            pthread_mutex_lock(&mutex_db);
+                            /* seccion criticia */
                             if (del_mssg_pending(database, userName, sName, id)!=0) goto error_connect;
+                            /* fin seccion critica */
+                            pthread_mutex_unlock(&mutex_db);
+
                             message_logs(id, sName, userName, 1);
+
+                            pthread_mutex_lock(&mutex_db);
+                            /* seccion criticia */
                             if (get_conn(database, sName, &connS)!=0) goto error_connect;
+                            /* fin seccion critica */
+                            pthread_mutex_unlock(&mutex_db);
+
                             if (connS==1) if (notify_message(sName, id)!=0) goto error_connect;   // enviar ACK si sender esta conectado                            
                         }
                         
@@ -248,7 +307,7 @@ void * worker(void * argum) {
             break;
         }
 
-        goto end; // si llega aqui no ha habido "otros" errores
+        goto end_connect; // si llega aqui no ha habido "otros" errores
 
         /* 2d. notificar error (3) : otros */
         error_connect:
@@ -256,7 +315,7 @@ void * worker(void * argum) {
             logs(op, userName, "FAIL");
             goto finish;
         
-        end:
+        end_connect:
             logs(op, userName, "OK");
 
     } else if (strcmp(buff, "DISCONNECT")==0)
@@ -266,9 +325,27 @@ void * worker(void * argum) {
         if (sock_receive(sd, userName, LENG)<0) goto error_disconnect;
 
         /* 1. buscar usuario */
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
+
+        if (exist == 0)     // este if evita mandar error_disconnect en vez de 1 si el usuario no existe
+        {                   // porque la  llamada a get_conn fallaría
+            if (sock_send(sd, "1", 1)<0) goto error_disconnect;
+            logs(op, userName, "FAIL");
+            goto end_disconnect;
+        }
+
         uint8_t conn;
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         if (get_conn(database, userName, &conn)!=0) goto error_disconnect;
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         switch (conn)
         {
@@ -277,9 +354,20 @@ void * worker(void * argum) {
             {
         /* 2a.1. borrar IP y puerto */
             case 1:
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (del_ip_port(database, userName)!=0) goto error_disconnect;
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
+
         /* 2a.2. cambiar a desconectado */
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (modify_conn(database, userName, 0)!=0) goto error_disconnect; // 1 conn ; 0 disconn   
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
 
         /* 2a.3. responder al cliente (0) */
                 if (sock_send(sd, "0", 1)<0) goto error_disconnect;
@@ -300,7 +388,7 @@ void * worker(void * argum) {
             break;
         }
         
-        goto end; // si llega aqui no ha habido "otros" errores
+        goto end_disconnect; // si llega aqui no ha habido "otros" errores
 
         /* 2d. notificar error (3) : otros */
         error_disconnect:
@@ -308,7 +396,7 @@ void * worker(void * argum) {
             logs(op, userName, "FAIL");
             goto finish;
         
-        end:
+        end_disconnect:
             logs(op, userName, "OK");
 
     } else if (strcmp(buff, "SEND")==0)
@@ -326,7 +414,12 @@ void * worker(void * argum) {
         if (sock_receive(sd, msg, LENG)<0) goto error_send;
 
         /* 3. buscar usuario */
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         switch (exist)
         {
@@ -339,26 +432,60 @@ void * worker(void * argum) {
         /* 4b.1. almacenar mensaje */
         case 1:
             unsigned int id;
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (get_id(database, userName, &id)!=0) goto error_send;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (add_mssg_pending(database, rName, userName, msg, id)!=0) goto error_send;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
 
         /* 4b.a.1. enviar mensaje */
             uint8_t conn;
             uint8_t connU;
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (get_conn(database, rName, &conn)!=0) goto error_send;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
+
             if (conn==1)
             {
                 if (send_message(userName, rName, id, msg)!=0) goto error_send;
                 message_logs(id, userName, rName, conn);
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (del_mssg_pending(database, rName, userName, id)!=0) goto error_send;
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
+
             }
+
+            pthread_mutex_lock(&mutex_db);
+            /* seccion criticia */
             if (get_conn(database, userName, &connU)!=0) goto error_send;
+            /* fin seccion critica */
+            pthread_mutex_unlock(&mutex_db);
+
             if (connU==1) if (notify_message(userName, id)!=0) goto error_send;   // enviar ACK si sender esta conectado                            
 
         /* 4b.a.2. responder al cliente (0). (id) */
                 if (sock_send(sd, "0", 1)<0) goto error_send;
                 if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0) goto error_send;
+
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (modify_id(database, userName)!=0) goto error_send;
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
+
                 break;
         }
 
@@ -375,15 +502,26 @@ void * worker(void * argum) {
         /* 1. buscar usuario */
         char userName[LENG]={0};
         uint8_t conn;
-        int exist=exists_by_ip(database, ip, userName);
+        if (sock_receive(sd, userName, LENG)<0) goto error_send;
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
+        int exist=exists_in(database, userName);
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         if (get_conn(database, userName, &conn)!=0) goto error_users;
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         /* 2a. notificar error (2) : no existe */
         if (exist==0)
         {
             if (sock_send(sd, "2", 1)<0) goto error_users;
             logs(op, userName, "FAIL");
-            goto end;
+            goto end_users;
         }
 
         /* 2b. notificar error (1) : no conectado */
@@ -391,14 +529,19 @@ void * worker(void * argum) {
         {
             if (sock_send(sd, "1", 1)<0) goto error_users;
             logs(op, userName, "FAIL");
-            goto end;
+            goto end_users;
         }
 
         /* 2c.1. obtener usuarios conectados */
         int n;
-        char* users[LENG]={0};
+        char* users[MAX_USERS]={0};
         for (int i = 0; i < LENG; i++) users[i] = malloc(LENG);
+
+        pthread_mutex_lock(&mutex_db);
+        /* seccion criticia */
         if (get_users_conn(database, &n, users)!=0) goto error_users;
+        /* fin seccion critica */
+        pthread_mutex_unlock(&mutex_db);
 
         /* 2c.2. responder al cliente (0). (#usr) */
         if (sock_send(sd, "0", 1)<0) goto error_users;
@@ -410,23 +553,21 @@ void * worker(void * argum) {
 
         for (int i = 0; i < LENG; i++) free(users[i]);
 
-        goto end; // si llega aqui no ha habido "otros" errores
+        goto end_users; // si llega aqui no ha habido "otros" errores
         
         /* 5. notificar error (2) : otros */
         error_users:
+            for (int i = 0; i < LENG; i++) if (users[i]) free(users[i]);
             sock_send(sd, "2", 1);
             logs(op, userName, "FAIL");
             goto finish;
 
-        end:
+        end_users:
             logs(op, userName, "OK");
 
     }
 
     finish:
-
-    /* fin seccion critica */
-    pthread_mutex_unlock(&mutex_db);
 
     if(close(sd)<0){
         error_th("Error cerrando sd de conexión");
@@ -477,7 +618,7 @@ int main(int argc, char *argv[]) {
     printf("s>\n");
 
     /* recibir peticiones de clientes */
-    while(1) {
+    while(!shutdown_flag) {
         struct sockaddr_in socketRemote;
         socklen_t s=sizeof(socketRemote);
 
@@ -500,6 +641,8 @@ int main(int argc, char *argv[]) {
         pthread_t id;
         pthread_create(&id, NULL, (void *)worker, args);
     }
+
+    toFile(database, "database.txt");
 
     return -1;
 }

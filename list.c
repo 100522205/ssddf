@@ -225,7 +225,7 @@ int fromFile(List * l, char * name) {
         if (fread(&portNum, sizeof(uint16_t), 1, fichero) != 1) goto error;
         if (fread(&n_msg, sizeof(int), 1, fichero) != 1) goto error;
 
-        if (setNode(l, uName, connection) != 0) goto error;
+        if (setNode(*l, uName, connection) != 0) goto error;
         set_ip_port(l, uName, ipAddr, portNum);
 
         for (int i = 0; i < n_msg; i++) {
@@ -259,26 +259,6 @@ int exists_in(List l, char* userName) {
 	}
 
 	return 0;
-}
-
-
-int exists_by_ip(List l, char* ip, char* userName) {
-    /* Funcion para verificar si un usuario tiene una IP y puerto especificos */
-    if (l == NULL) return 0;
-
-    struct Node *aux = l;
-    while (aux != NULL) {
-        // Comparamos la IP (string) y el puerto (uint16_t)
-        if (strcmp(aux->ip, ip) == 0) {
-            // Si coincide, guardamos el nombre en el parámetro de salida
-            strncpy(userName, aux->userName, LENG);
-            userName[LENG - 1] = '\0'; // Aseguramos el cierre del string
-            return 1; // Existe
-        }
-        aux = aux->next;
-    }
-
-    return 0; // No existe coincidencia
 }
 
 

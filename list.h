@@ -5,6 +5,8 @@
 // Este es una derivacion de dicho archivo
 #define LENG 255
 
+#include <stdint.h>
+
 
 struct msgdata {
 	char 			sName[LENG];
@@ -49,8 +51,6 @@ int toFile(List l, char* name);
 int fromFile(List* l, char* name);
 
 int exists_in(List l, char* userName);
-
-int exists_by_ip(List l, char* ip, char* userName);
 
 int modify_conn(List l, char* userName,  uint8_t conn);
 

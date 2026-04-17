@@ -83,7 +83,8 @@ class client :
             sock.close()
             return client.RC.ERROR
         
-        client._me=user
+        if msg==0:
+            client._me=user
         sock.close()
         return client.RC.OK
 
@@ -195,7 +196,7 @@ class client :
 
         # creacion del thread
 
-        client._thread= threading.Thread(target=client.worker, args=(sock_thread))
+        client._thread= threading.Thread(target=client.worker, args=(sock_thread,))
         client._thread.start()
         # ahora toca enviar dos cadenas, CONNECT y el nombre, y luego el puerto
 
@@ -380,10 +381,11 @@ class client :
         # ahora toca recibir el byte de resultado
 
         try:
-            msg= int.to_bytes(sock.recv(1), byteorder='big')
+            msg= int.from_bytes(sock.recv(1), byteorder='big')
             
             if 0==msg:
-                id_mensaje = client.read_string(sock)
+                id_bytes = sock.recv(4)
+                id_mensaje = int.from_bytes(id_bytes, byteorder='big')
                 print("SEND OK - MESSAGE " + str(id_mensaje))
             elif 1==msg:
                 print("SEND FAIL, USER DOES NOT EXIST\n")
