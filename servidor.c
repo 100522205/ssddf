@@ -39,27 +39,94 @@ void message_logs(unsigned int id, char* sName, char* rName, int conn) {
 
 int send_message(char* sName, char* rName, unsigned int id, char* msg) {
     /* 0. conectarse al thread */
+    char ip[16];
+    uint16_t port;
+    if (get_ip_port(database, rName, &ip, &port)!=0) return -1;
+
+    int sd;
+    struct sockaddr_in client_addr;
+    
+    sd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sd < 0) return -1;
+
+    bzero((char *)&client_addr, sizeof(client_addr));
+
+    client_addr.sin_family = AF_INET;
+    client_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &(client_addr.sin_addr)) <= 0) return -1;
+
+    if (connect(sd, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) return -1;
 
     /* 1. enviar SEND_MESSAGE */
+    if (sock_send(sd, "SEND_MESSAGE", 12)<0)
+    {
+        close(sd);
+        return -1;
+    }
 
     /* 2. enviar sName */
+    if (sock_send(sd, sName, LENG)<0)
+    {
+        close(sd);
+        return -1;
+    }
 
     /* 3. enviar id */
+    if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0)
+    {
+        close(sd);
+        return -1;
+    }
 
     /* 4. enviar mensaje */
+    if (sock_send(sd, msg, LENG)<0)
+    {
+        close(sd);
+        return -1;
+    }
 
     /* 5. cerrar conexion */
+    close(sd);
 }
 
 
 int notify_message(char* userName, unsigned int id) {              // solo si esta conectado
     /* 0. conectarse al thread */
+    char ip[16];
+    uint16_t port;
+    if (get_ip_port(database, userName, &ip, &port)!=0) return -1;
+
+    int sd;
+    struct sockaddr_in client_addr;
+    
+    sd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sd < 0) return -1;
+
+    bzero((char *)&client_addr, sizeof(client_addr));
+
+    client_addr.sin_family = AF_INET;
+    client_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &(client_addr.sin_addr)) <= 0) return -1;
+
+    if (connect(sd, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) return -1;
 
     /* 1. enviar SEND_MESS_ACK */
-
+    if (sock_send(sd, "SEND_MESS_ACK", 13)<0)
+    {
+        close(sd);
+        return -1;
+    } 
     /* 2. enviar id */
+    if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0)
+    {
+        close(sd);
+        return -1;
+    }
 
     /* 3. cerrar conexion */
+    close(sd);
 }
 
 
@@ -268,8 +335,12 @@ void * worker(void * argum) {
                             id=pending[i].id;
                             strcpy(msg, pending[i].msg);
 
+                            pthread_mutex_lock(&mutex_db);
+                            /* seccion criticia */
                             if (send_message(sName, userName, id, msg)!=0) goto error_connect;
-
+                            /* fin seccion critica */
+                            pthread_mutex_unlock(&mutex_db);
+                            
                             pthread_mutex_lock(&mutex_db);
                             /* seccion criticia */
                             if (del_mssg_pending(database, userName, sName, id)!=0) goto error_connect;
@@ -457,7 +528,11 @@ void * worker(void * argum) {
 
             if (conn==1)
             {
+                pthread_mutex_lock(&mutex_db);
+                /* seccion criticia */
                 if (send_message(userName, rName, id, msg)!=0) goto error_send;
+                /* fin seccion critica */
+                pthread_mutex_unlock(&mutex_db);
                 message_logs(id, userName, rName, conn);
 
                 pthread_mutex_lock(&mutex_db);
