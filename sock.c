@@ -19,11 +19,12 @@ int sock_send(int fd_socket, char * buff, int size){
 int sock_receive(int fd_socket, char*buff, int size){
     /* Función para la recepción de un string por socket*/
 
-    int remaining = size, read_v, to_return=0;
-    while((remaining>0)&&((read_v = read(fd_socket, buff, remaining))>0)){
-        remaining-=read_v;
-        to_return+=read_v;
-        buff+=read_v;
+    int i = 0;
+    char c;
+    while (i < size - 1 && read(fd_socket, &c, 1) == 1) {
+        if (c == '\0') break;
+        buff[i++] = c;
     }
-    return to_return;
+    buff[i] = '\0';
+    return i;
 }

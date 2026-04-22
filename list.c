@@ -225,12 +225,12 @@ int fromFile(List * l, char * name) {
         if (fread(&portNum, sizeof(uint16_t), 1, fichero) != 1) goto error;
         if (fread(&n_msg, sizeof(int), 1, fichero) != 1) goto error;
 
-        if (setNode(*l, uName, connection) != 0) goto error;
-        set_ip_port(l, uName, ipAddr, portNum);
+        if (setNode(l, uName, connection) != 0) goto error;
+        set_ip_port(*l, uName, ipAddr, portNum);
 
         for (int i = 0; i < n_msg; i++) {
             if (fread(&temp_msg, sizeof(struct msgdata), 1, fichero) != 1) goto error;
-            add_mssg_pending(l, uName, temp_msg.sName, temp_msg.msg, temp_msg.id);
+            add_mssg_pending(*l, uName, temp_msg.sName, temp_msg.msg, temp_msg.id);
         }
     }
 

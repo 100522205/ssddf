@@ -1,6 +1,11 @@
+#define _POSIX_C_SOURCE 200809L   // necesario para evitar errores con el manejador de interrupción de señal
+
 #include <signal.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
 #include "sock.h"
 #include "list.h"
 
@@ -11,7 +16,7 @@ pthread_mutex_t mutex_db=PTHREAD_MUTEX_INITIALIZER;
 volatile sig_atomic_t shutdown_flag = 0;
 
 
-void manejador_sigint(int sig) { shutdown_flag = 1; }
+void manejador_sigint(int sig) { (void) sig; shutdown_flag = 1; }
 
 
 int error(char * message, int cod) {
@@ -41,7 +46,7 @@ int send_message(char* sName, char* rName, unsigned int id, char* msg) {
     /* 0. conectarse al thread */
     char ip[16];
     uint16_t port;
-    if (get_ip_port(database, rName, &ip, &port)!=0) return -1;
+    if (get_ip_port(database, rName, ip, &port)!=0) return -1;
 
     int sd;
     struct sockaddr_in client_addr;
@@ -49,7 +54,7 @@ int send_message(char* sName, char* rName, unsigned int id, char* msg) {
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if (sd < 0) return -1;
 
-    bzero((char *)&client_addr, sizeof(client_addr));
+    memset(&client_addr, 0, sizeof(client_addr));
 
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(port);
@@ -88,6 +93,7 @@ int send_message(char* sName, char* rName, unsigned int id, char* msg) {
 
     /* 5. cerrar conexion */
     close(sd);
+    return 0;
 }
 
 
@@ -95,7 +101,7 @@ int notify_message(char* userName, unsigned int id) {              // solo si es
     /* 0. conectarse al thread */
     char ip[16];
     uint16_t port;
-    if (get_ip_port(database, userName, &ip, &port)!=0) return -1;
+    if (get_ip_port(database, userName, ip, &port)!=0) return -1;
 
     int sd;
     struct sockaddr_in client_addr;
@@ -103,7 +109,7 @@ int notify_message(char* userName, unsigned int id) {              // solo si es
     sd = socket(AF_INET, SOCK_STREAM, 0);
     if (sd < 0) return -1;
 
-    bzero((char *)&client_addr, sizeof(client_addr));
+    memset(&client_addr, 0, sizeof(client_addr));
 
     client_addr.sin_family = AF_INET;
     client_addr.sin_port = htons(port);
@@ -127,6 +133,7 @@ int notify_message(char* userName, unsigned int id) {              // solo si es
 
     /* 3. cerrar conexion */
     close(sd);
+    return 0;
 }
 
 
@@ -155,6 +162,8 @@ void * worker(void * argum) {
     char op[LENG]={0};
     strcpy(op, buff);
 
+    uint8_t ret_val;
+
     if (strcmp(buff, "REGISTER")==0)
     {
         /* 0. recibir nombre de usuario */
@@ -181,14 +190,16 @@ void * worker(void * argum) {
             pthread_mutex_unlock(&mutex_db);
 
         /* 2a.2. responder al cliente (0). guardar id de mnsj (0) */
-            if (sock_send(sd, "0", 1)<0) goto error_register;
+            ret_val=0;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_register;
             // id guardado en 2a.1
             break;
 
         /* 2b. notificar error (1) : ya existe */
         case 1:
-            if (sock_send(sd, "1", 1)<0) goto error_register;
-            logs(op, userName, "FAIL");
+            ret_val=1;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_register;
+            logs(op, userName, "FAIL"); goto finish;
             break;
         }
 
@@ -196,8 +207,9 @@ void * worker(void * argum) {
 
         /* 2c. notificar error (2) : otros*/
         error_register:
-            sock_send(sd, "2", 1);
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
 
         end_register:
@@ -229,13 +241,15 @@ void * worker(void * argum) {
             pthread_mutex_unlock(&mutex_db);
 
         /* 2a.2. responder al cliente (0) */
-            if (sock_send(sd, "0", 1)<0) goto error_unregister;
+            ret_val=0;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_unregister;
             break;
 
         /* 2b. notificar error (1) : no existe */
         case 0:
-            if (sock_send(sd, "1", 1)<0) goto error_unregister;
-            logs(op, userName, "FAIL");
+            ret_val=1;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_unregister;
+            logs(op, userName, "FAIL"); goto finish;
             break;
         }
 
@@ -243,8 +257,9 @@ void * worker(void * argum) {
 
         /* 2c. notificar error (2) : otros */
         error_unregister:
-            sock_send(sd, "2", 1);
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
 
         /* 3. borrar mensajes pendientes */
@@ -301,7 +316,8 @@ void * worker(void * argum) {
                 pthread_mutex_unlock(&mutex_db);
 
         /* 2a.3. responder al cliente (0) */
-                if (sock_send(sd, "0", 1)<0) goto error_connect;
+                ret_val=0;
+                if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_connect;
 
         /* 2a.4. enviar mensajes pendientes */
 
@@ -365,16 +381,18 @@ void * worker(void * argum) {
 
         /* 2b. notificar error (1) : no existe */
             case 0:
-                if (sock_send(sd, "1", 1)<0) goto error_connect;
-                logs(op, userName, "FAIL");
+                ret_val=1;
+                if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_connect;
+                logs(op, userName, "FAIL"); goto finish;
                 break;
             }
             break;
 
         /* 2c. notificar error (2) : ya conectado */
         case 1:
-            if (sock_send(sd, "2", 1)<0) goto error_connect;
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_connect;
+            logs(op, userName, "FAIL"); goto finish;
             break;
         }
 
@@ -382,8 +400,9 @@ void * worker(void * argum) {
 
         /* 2d. notificar error (3) : otros */
         error_connect:
-            sock_send(sd, "3", 1);
-            logs(op, userName, "FAIL");
+            ret_val=3;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
         
         end_connect:
@@ -405,8 +424,9 @@ void * worker(void * argum) {
 
         if (exist == 0)     // este if evita mandar error_disconnect en vez de 1 si el usuario no existe
         {                   // porque la  llamada a get_conn fallaría
-            if (sock_send(sd, "1", 1)<0) goto error_disconnect;
-            logs(op, userName, "FAIL");
+            ret_val=1;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_disconnect;
+            logs(op, userName, "FAIL"); goto finish;
             goto end_disconnect;
         }
 
@@ -441,21 +461,24 @@ void * worker(void * argum) {
                 pthread_mutex_unlock(&mutex_db);
 
         /* 2a.3. responder al cliente (0) */
-                if (sock_send(sd, "0", 1)<0) goto error_disconnect;
+                ret_val=0;
+                if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_disconnect;
                 break;
 
         /* 2b. notificar error (1) : no existe */
             case 0:
-                if (sock_send(sd, "1", 1)<0) goto error_disconnect;
-                logs(op, userName, "FAIL");
+                ret_val=1;
+                if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_disconnect;
+                logs(op, userName, "FAIL"); goto finish;
                 break;
             }
             break;
 
         /* 2c. notificar error (2) : no conectado */
         case 0:
-            if (sock_send(sd, "2", 1)<0) goto error_disconnect;
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_disconnect;
+            logs(op, userName, "FAIL"); goto finish;
             break;
         }
         
@@ -463,8 +486,9 @@ void * worker(void * argum) {
 
         /* 2d. notificar error (3) : otros */
         error_disconnect:
-            sock_send(sd, "3", 1);
-            logs(op, userName, "FAIL");
+            ret_val=3;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
         
         end_disconnect:
@@ -496,8 +520,9 @@ void * worker(void * argum) {
         {
         /* 4a. notificar error (1) : no existe */
         case 0:
-            if (sock_send(sd, "1", 1)<0) goto error_send;
-            logs(op, userName, "FAIL");
+            ret_val=1;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_send;
+            logs(op, userName, "FAIL"); goto finish;
             break;
 
         /* 4b.1. almacenar mensaje */
@@ -552,7 +577,8 @@ void * worker(void * argum) {
             if (connU==1) if (notify_message(userName, id)!=0) goto error_send;   // enviar ACK si sender esta conectado                            
 
         /* 4b.a.2. responder al cliente (0). (id) */
-                if (sock_send(sd, "0", 1)<0) goto error_send;
+                ret_val=0;
+                if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_send;
                 if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0) goto error_send;
 
                 pthread_mutex_lock(&mutex_db);
@@ -568,8 +594,9 @@ void * worker(void * argum) {
         
         /* 5. notificar error (2) : otros */
         error_send:
-            sock_send(sd, "2", 1);
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
 
     } else if (strcmp(buff, "USERS")==0)
@@ -594,16 +621,18 @@ void * worker(void * argum) {
         /* 2a. notificar error (2) : no existe */
         if (exist==0)
         {
-            if (sock_send(sd, "2", 1)<0) goto error_users;
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_users;
+            logs(op, userName, "FAIL"); goto finish;
             goto end_users;
         }
 
         /* 2b. notificar error (1) : no conectado */
         if (conn==0)
         {
-            if (sock_send(sd, "1", 1)<0) goto error_users;
-            logs(op, userName, "FAIL");
+            ret_val=1;
+            if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_users;
+            logs(op, userName, "FAIL"); goto finish;
             goto end_users;
         }
 
@@ -619,7 +648,8 @@ void * worker(void * argum) {
         pthread_mutex_unlock(&mutex_db);
 
         /* 2c.2. responder al cliente (0). (#usr) */
-        if (sock_send(sd, "0", 1)<0) goto error_users;
+        ret_val=0;
+        if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_users;
         int n_net = htonl(n);
         if (sock_send(sd, (char*)&n_net, sizeof(int))<0) goto error_users;
 
@@ -633,8 +663,9 @@ void * worker(void * argum) {
         /* 5. notificar error (2) : otros */
         error_users:
             for (int i = 0; i < LENG; i++) if (users[i]) free(users[i]);
-            sock_send(sd, "2", 1);
-            logs(op, userName, "FAIL");
+            ret_val=2;
+            sock_send(sd, (char*)&ret_val, 1);
+            logs(op, userName, "FAIL"); goto finish;
             goto finish;
 
         end_users:
@@ -654,7 +685,7 @@ void * worker(void * argum) {
 int main(int argc, char *argv[]) {
     
     if (argc != 3) {
-        printf("Usage: ./server -p <port>");
+        printf("Usage: ./server -p <port>\n");
         exit(0);
     }
 
@@ -663,7 +694,11 @@ int main(int argc, char *argv[]) {
         exit(0);
     }
 
-    signal(SIGINT, manejador_sigint);
+    struct sigaction sa;
+    sa.sa_handler = manejador_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT, &sa, NULL);
 
     // cargamos base de datos
     int res=fromFile(&database, "database.txt");
@@ -678,7 +713,7 @@ int main(int argc, char *argv[]) {
 
     printf("s> init server %s:%d\n", inet_ntoa(*(struct in_addr*)ip->h_addr_list[0]), port);
 
-    bzero(&mySocket, sizeof(struct sockaddr_in));
+    memset(&mySocket, 0, sizeof(struct sockaddr_in));
     mySocket.sin_addr.s_addr=INADDR_ANY;
     mySocket.sin_family=AF_INET;
     mySocket.sin_port=htons(port);
@@ -700,6 +735,7 @@ int main(int argc, char *argv[]) {
         int sd_client = accept(server_sd,(struct sockaddr *)&socketRemote, &s);
 
         if(sd_client<0) {
+            if (errno == EINTR) break;
             printf("Error en accept");
             continue;
         }
