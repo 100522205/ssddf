@@ -64,28 +64,30 @@ int send_message(char* sName, char* rName, unsigned int id, char* msg) {
     if (connect(sd, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) return -1;
 
     /* 1. enviar SEND_MESSAGE */
-    if (sock_send(sd, "SEND_MESSAGE", 12)<0)
+    if (sock_send(sd, "SEND_MESSAGE", 13)<0)
     {
         close(sd);
         return -1;
     }
 
     /* 2. enviar sName */
-    if (sock_send(sd, sName, LENG)<0)
+    if (sock_send(sd, sName, strlen(sName)+1)<0)
     {
         close(sd);
         return -1;
     }
 
     /* 3. enviar id */
-    if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0)
+    char id_str[16];
+    snprintf(id_str, sizeof(id_str), "%u", id);
+    if (sock_send(sd, id_str, strlen(id_str)+1)<0)
     {
         close(sd);
         return -1;
     }
 
     /* 4. enviar mensaje */
-    if (sock_send(sd, msg, LENG)<0)
+    if (sock_send(sd, msg, strlen(msg)+1)<0)
     {
         close(sd);
         return -1;
@@ -144,6 +146,7 @@ struct thread_args {
 
 
 void * worker(void * argum) {
+
     struct thread_args *args=(struct thread_args *)argum;
     int sd=args->sd;
     char ip[16]={0};
@@ -585,7 +588,8 @@ void * worker(void * argum) {
         /* 4b.a.2. responder al cliente (0). (id) */
                 ret_val=0;
                 if (sock_send(sd, (char*)&ret_val, 1)<0) goto error_send;
-                if (sock_send(sd, (char*)&id, sizeof(unsigned int))<0) goto error_send;
+                unsigned int id_net=htonl(id);
+                if (sock_send(sd, (char*)&id_net, sizeof(unsigned int))<0) goto error_send;
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */

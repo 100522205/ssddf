@@ -387,13 +387,13 @@ class client :
                 print("OK\n")
                 client._me=""
             elif 1== msg:
-                print("DISCONNECT FAIL, USER DOES NOT EXIST\n")
+                print("FAIL, USER DOES NOT EXIST\n")
                 return client.RC.USER_ERROR
             elif 2== msg:
-                print("DISCONNECT FAIL, USER NOT CONNECTED\n")
+                print("FAIL, USER NOT CONNECTED\n")
                 return client.RC.USER_ERROR
             elif 3== msg:
-                print("DISCONNECT FAIL\n")
+                print("FAIL\n")
                 return client.RC.ERROR
             else:
                 print("UNEXPECTED!!!!\n")
@@ -421,8 +421,8 @@ class client :
 
         # testeo de parámetros
 
-        if(client._me==user or type(user)!=str or type(message)!=str or len(message)>255):
-            print("Error en send: Introduce parámetros correctos\n")
+        if(client._conn=="" or client._me==user or type(user)!=str or type(message)!=str or len(message)>255):
+            print("Error en send: Introduce parámetros correctos o realiza operación de conexión\n")
             return client.RC.ERROR
 
         # ahora: creacion de sockets con adress
@@ -515,6 +515,8 @@ class client :
                 contenido=client.read_string(socket)
 
                 print("MESSAGE "+str(my_id)+ " FROM "+str(remitente) + "\n"+str(contenido)+ "\nEND")
+                
+                print("c> ", end="", flush=True)
             
             socket.close()
 

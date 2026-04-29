@@ -180,10 +180,10 @@ int toFile(List l, char * name) {
         cJSON* userTree = cJSON_CreateObject(); // ARBOL DE 1 USUSARIO
 
         // AÑADIR DATOS
-        cJSON_AddNumberToObject(userTree, "conn", aux->conn);
+        cJSON_AddNumberToObject(userTree, "conn", 0); // siempre desconectado
         cJSON_AddNumberToObject(userTree, "id", aux->id);
-        cJSON_AddStringToObject(userTree, "ip", (aux->ip[0]!='\0')?aux->ip : "");
-        cJSON_AddNumberToObject(userTree, "port", aux->port);
+        //cJSON_AddStringToObject(userTree, "ip", (aux->ip[0]!='\0')?aux->ip : ""); No los almacenamos para evitar problemas de interrupción de señal
+        //cJSON_AddNumberToObject(userTree, "port", aux->port);                     Damos por hecho que al terminar el servidor todos los usuarios se desconectan
         cJSON_AddNumberToObject(userTree, "num_pending", aux->num_pending);
 
 
@@ -252,10 +252,12 @@ int fromFile(List * l, char * name) {
         struct Node* newNode = *l;
         newNode->id = (unsigned int)cJSON_GetObjectItem(userNode, "id")->valueint;
 
-        cJSON* ipJson = cJSON_GetObjectItem(userNode, "ip");
-        if (cJSON_IsString(ipJson)) strncpy(newNode->ip, ipJson->valuestring, 16);
+        // ip no está almacenada
+        //cJSON* ipJson = cJSON_GetObjectItem(userNode, "ip");
+        //if (cJSON_IsString(ipJson)) strncpy(newNode->ip, ipJson->valuestring, 16);
 
-        newNode->port = (uint16_t)cJSON_GetObjectItem(userNode, "port")->valueint;
+        // valor de port en setNode
+        //newNode->port = (uint16_t)cJSON_GetObjectItem(userNode, "port")->valueint;
 
         cJSON* pendingJson = cJSON_GetObjectItem(userNode, "pending");
         newNode->num_pending = cJSON_GetObjectItem(userNode, "num_pending")->valueint;
