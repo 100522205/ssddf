@@ -171,75 +171,118 @@ int get_users_conn(List l, int* n, char** users) {
 
 
 int toFile(List l, char * name) {
-    FILE * fichero = fopen(name, "wb");
-    if(fichero == NULL) return -1;
+    cJSON* root = cJSON_CreateObject(); // ARBOL PARA EL JSON
+    if (root==NULL) return -1;
 
-    struct Node * aux = l;
+    struct Node* aux = l;
 
     while(aux != NULL) {
-        fwrite(aux->userName, sizeof(char), LENG, fichero);
-        fwrite(&(aux->conn), sizeof(uint8_t), 1, fichero);
-		fwrite(&(aux->id), sizeof(unsigned int), 1, fichero);
-        
-        fwrite(aux->ip, sizeof(char), 16, fichero);
-        fwrite(&(aux->port), sizeof(uint16_t), 1, fichero);
+        cJSON* userTree = cJSON_CreateObject(); // ARBOL DE 1 USUSARIO
 
-        int n_msg = 0;
-        if (aux->pending != NULL) {
-            n_msg = aux->num_pending;
-        }
+        // AÑADIR DATOS
+        cJSON_AddNumberToObject(userTree, "conn", aux->conn);
+        cJSON_AddNumberToObject(userTree, "id", aux->id);
+        cJSON_AddStringToObject(userTree, "ip", (aux->ip[0]!='\0')?aux->ip : "");
+        cJSON_AddNumberToObject(userTree, "port", aux->port);
+        cJSON_AddNumberToObject(userTree, "num_pending", aux->num_pending);
 
-        fwrite(&n_msg, sizeof(int), 1, fichero);
 
-        if (n_msg > 0 && aux->pending != NULL) {
-            fwrite(aux->pending, sizeof(struct msgdata), n_msg, fichero);
-        }
+        if (aux->pending != NULL && aux->num_pending > 0) {
+            cJSON* msgTree = cJSON_CreateObject(); // ARBOL DE MENSAJES PENDIENTES
+            for (int i=0; i<aux->num_pending; i++) {
+                // CLAVE: "<sName>,<id>"
+                char key[LENG+20];
+                sprintf(key, "%s,%u", aux->pending[i].sName, aux->pending[i].id);
+
+                // AÑADIR DATOS
+                cJSON_AddStringToObject(msgTree, key, aux->pending[i].msg);
+            }
+            cJSON_AddItemToObject(userTree, "pending", msgTree);
+        } else cJSON_AddNullToObject(userTree, "pending");
+
+        cJSON_AddItemToObject(root, aux->userName, userTree);
 
         aux = aux->next;
     }
+    
+    // Pasamos Objeto a Json
+    char* json_string = cJSON_Print(root);
 
+    FILE * fichero = fopen(name, "w");
+    if(fichero == NULL) { cJSON_Delete(root); free(json_string); return -1;}
+
+    fputs(json_string, fichero);
     fclose(fichero);
+
+    cJSON_Delete(root);
+    free(json_string);
+
     return 0;
 }
 
 
 int fromFile(List * l, char * name) {
-    FILE * fichero = fopen(name, "rb");
+    FILE * fichero = fopen(name, "r");
     if (fichero == NULL) return -1;
 
     destroy_list(l);
 
-    char uName[LENG];
-    uint8_t connection;
-	unsigned int id;
-    char ipAddr[16];
-    uint16_t portNum;
-    int n_msg;
-    struct msgdata temp_msg;
+    fseek(fichero, 0, SEEK_END);
+    long fsize = ftell(fichero);
+    fseek(fichero, 0, SEEK_SET);
 
-    while (fread(uName, sizeof(char), LENG, fichero) == LENG) {
+    if (fsize <= 0) { fclose(fichero); return 0;}   // base de datos vacía 
 
-        if (fread(&connection, sizeof(uint8_t), 1, fichero) != 1) goto error;
-		if (fread(&id, sizeof(unsigned int), 1, fichero) != 1) goto error;
-        if (fread(ipAddr, sizeof(char), 16, fichero) != 16) goto error;
-        if (fread(&portNum, sizeof(uint16_t), 1, fichero) != 1) goto error;
-        if (fread(&n_msg, sizeof(int), 1, fichero) != 1) goto error;
+    char* json_string=malloc(fsize+1);
+    if (json_string == NULL) {fclose(fichero); return -1;}
+    
+    fread(json_string, 1, fsize, fichero);
+    json_string[fsize] = '\0';
+    fclose(fichero);
 
-        if (setNode(l, uName, connection) != 0) goto error;
-        set_ip_port(*l, uName, ipAddr, portNum);
+    cJSON* root = cJSON_Parse(json_string);
+    if (root == NULL) {free(json_string); return -1;}
 
-        for (int i = 0; i < n_msg; i++) {
-            if (fread(&temp_msg, sizeof(struct msgdata), 1, fichero) != 1) goto error;
-            add_mssg_pending(*l, uName, temp_msg.sName, temp_msg.msg, temp_msg.id);
-        }
+    cJSON* userNode = NULL;
+    cJSON_ArrayForEach(userNode, root) {
+        char* uName = userNode->string;
+        uint8_t conn = (uint8_t)cJSON_GetObjectItem(userNode, "conn")->valueint;
+        if (setNode(l, uName, conn) != 0) goto error;
+
+        struct Node* newNode = *l;
+        newNode->id = (unsigned int)cJSON_GetObjectItem(userNode, "id")->valueint;
+
+        cJSON* ipJson = cJSON_GetObjectItem(userNode, "ip");
+        if (cJSON_IsString(ipJson)) strncpy(newNode->ip, ipJson->valuestring, 16);
+
+        newNode->port = (uint16_t)cJSON_GetObjectItem(userNode, "port")->valueint;
+
+        cJSON* pendingJson = cJSON_GetObjectItem(userNode, "pending");
+        newNode->num_pending = cJSON_GetObjectItem(userNode, "num_pending")->valueint;
+
+        if (newNode->num_pending > 0 && cJSON_IsObject(pendingJson)) {
+            newNode->pending=malloc(sizeof(struct msgdata)* newNode->num_pending);
+
+            int i = 0;
+            cJSON* msgNode = NULL;
+            cJSON_ArrayForEach(msgNode, pendingJson) {
+                if (i < newNode->num_pending) {
+                    sscanf(msgNode->string, "%[^,],%u", newNode->pending[i].sName, &newNode->pending[i].id);
+                    strncpy(newNode->pending[i].msg, msgNode->valuestring, LENG);
+                    i++;
+                }
+            }
+        } else {newNode->pending=NULL; newNode->num_pending=0;}
     }
 
-    fclose(fichero);
+    cJSON_Delete(root);
+    free(json_string);
     return 0;
 
 error:
-    fclose(fichero);
+    cJSON_Delete(root);
     destroy_list(l);
+    free(json_string);
     return -1;
 }
 

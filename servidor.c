@@ -566,6 +566,9 @@ void * worker(void * argum) {
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
+            } else
+            {
+                message_logs(id, userName, rName, conn);
             }
 
             pthread_mutex_lock(&mutex_db);
@@ -701,7 +704,7 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sa, NULL);
 
     // cargamos base de datos
-    int res=fromFile(&database, "database.txt");
+    int res=fromFile(&database, "database.json");
     if (res!=0) printf("Error al cargar base de datos\n");
 
     char maquina[256];
@@ -753,7 +756,7 @@ int main(int argc, char *argv[]) {
         pthread_create(&id, NULL, (void *)worker, args);
     }
 
-    toFile(database, "database.txt");
+    toFile(database, "database.json");
 
     return -1;
 }

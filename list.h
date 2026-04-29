@@ -6,6 +6,7 @@
 #define LENG 255
 
 #include <stdint.h>
+#include "cJSON.h"
 
 
 struct msgdata {

@@ -10,16 +10,14 @@ OBJDIR = .o
 TARGET_SERV = server
 
 # Archivos fuente
-COMMON_SRC = list.c sock.c
+COMMON_SRC = list.c sock.c cJSON.c
 SERV_SRC = servidor.c $(COMMON_SRC)
 
 # Generar nombres de archivos .o dentro de $(OBJDIR)
 SERV_OBJS = $(addprefix $(OBJDIR)/, $(SERV_SRC:.c=.o))
-CLI_OBJS = $(addprefix $(OBJDIR)/, $(CLI_SRC:.c=.o))
 
 # Regla principal
-all: $(OBJDIR) $(TARGET_SERV) $(TARGET_CLI)
-
+all: $(OBJDIR) $(TARGET_SERV)
 # Crear el directorio .o si no existe
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
@@ -34,6 +32,6 @@ $(OBJDIR)/%.o: %.c
 
 # Limpiar archivos generados
 clean:
-	rm -rf $(OBJDIR) $(TARGET_SERV) $(TARGET_CLI)
+	rm -rf $(OBJDIR) $(TARGET_SERV)
 
 .PHONY: all clean
