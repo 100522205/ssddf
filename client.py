@@ -197,6 +197,7 @@ class client :
         # creacion del thread
 
         client._thread= threading.Thread(target=client.worker, args=(sock_thread,))
+        client._thread.daemon= True
         client._thread.start()
         # ahora toca enviar dos cadenas, CONNECT y el nombre, y luego el puerto
 
@@ -217,7 +218,7 @@ class client :
             msg=int.from_bytes(msg, byteorder='big')
             
             if msg!=2:
-                print("CONNECT "+user, end = "")
+                print("CONNECT "+user, end = " ")
             if 0== msg:
                 print("OK\n")
             elif 1==msg:
