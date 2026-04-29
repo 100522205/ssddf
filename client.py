@@ -22,6 +22,7 @@ class client :
     _thread = -1
     _continue = 1
     _me = ""
+    _conn = ""
 
     # ******************** METHODS *******************
     # *
@@ -76,8 +77,10 @@ class client :
                 print("REGISTER OK\n")
             elif msg==1:
                 print("USERNAME IN USE\n")
+                return client.RC.USER_ERROR
             else:
                 print("REGISTER FAIL")
+                return client.RC.ERROR
         except Exception as e:
             print("Error en register: Fallo en recepción"+str(e))
             sock.close()
@@ -138,10 +141,13 @@ class client :
             msg=int.from_bytes(msg, byteorder='big')
             if msg==0:
                 print("UNREGISTER OK\n")
+                client._me=""
             elif msg==1:
                 print("USER DOES NOT EXIST\n")
+                return client.RC.USER_ERROR
             else:
                 print("UNREGISTER FAIL\n")
+                return client.RC.ERROR
         except Exception as e:
             sock.close()
             print("Error en unregister: Fallo en recepción"+str(e))
@@ -195,9 +201,8 @@ class client :
             return client.RC.ERROR
 
         # creacion del thread
-
-        client._thread= threading.Thread(target=client.worker, args=(sock_thread,))
-        client._thread.daemon= True
+        client._continue=1
+        client._thread= threading.Thread(target=client.worker, args=(sock_thread,), daemon=True)
         client._thread.start()
         # ahora toca enviar dos cadenas, CONNECT y el nombre, y luego el puerto
 
@@ -218,17 +223,21 @@ class client :
             msg=int.from_bytes(msg, byteorder='big')
             
             if msg!=2:
-                print("CONNECT "+user, end = " ")
+                print("CONNECT", end = " ")
             if 0== msg:
                 print("OK\n")
             elif 1==msg:
                 print("FAIL, USER DOES NOT EXIST\n")
+                return client.RC.USER_ERROR
             elif 2==msg:
                 print("USER ALREADY CONNECTED\n")
+                return client.RC.USER_ERROR
             elif 3== msg:
                 print("CONNECT FAIL\n")
+                return client.RC.ERROR
             else:
                 print("UNEXPECTED!!!!\n")
+                return client.RC.ERROR
             
         except Exception as e:
             sock.close()
@@ -237,6 +246,7 @@ class client :
         
         sock.close()
         client._me=user
+        client._conn=user
         return client.RC.OK
 
     # *
@@ -246,8 +256,71 @@ class client :
     # * @return ERROR if another error occurred
     @staticmethod
     def  users() :
-        #  Write your code here
-        return client.RC.ERROR
+        # Funcion para conocer los usuarios conectados
+
+        # primero: creacion de socket
+        try:
+            # comunicación genérica
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock.bind(address)
+
+
+        except Exception as e:
+            print("Error en connect: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+
+        # ahora, a la conexión
+
+        try:
+            address_servidor = (client._server, client._port)
+            sock.connect(address_servidor)
+
+        except Exception as e:
+            print("Error en connect: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+
+        try:
+            mensajes = ["USERS", client._me]
+            for m in mensajes:
+                sock.sendall((m+"\0").encode('utf-8'))
+
+        except Exception as e:
+            sock.close()
+            print("Error en connect: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca recibir el byte de resultado
+
+        try:
+            msg=sock.recv(1)
+            msg=int.from_bytes(msg, byteorder='big')
+            
+            print("CONNECTED USERS", end = " ")
+            if 0== msg:
+                n_user_bytes = sock.recv(4)
+                n_user = int.from_bytes(n_user_bytes, byteorder='big')
+                print("("+ str(n_user)+" users connected) OK")
+                for i in range(n_user):
+                    name = sock.recv(255).decode('utf-8').rstrip('\x00')
+                    print(name)
+            elif 1==msg:
+                print("FAIL, USER IS NOT CONNECTED\n")
+                return client.RC.USER_ERROR
+            elif 2==msg:
+                print("FAIL\n")
+                return client.RC.ERROR
+            else:
+                print("UNEXPECTED!!!!\n")
+                return client.RC.ERROR
+            
+        except Exception as e:
+            sock.close()
+            print("Error en connect: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        
+        sock.close()
+        return client.RC.OK
 
 
 
@@ -312,14 +385,19 @@ class client :
             print("DISCONNECT ", end = "")
             if 0== msg:
                 print("OK\n")
+                client._me=""
             elif 1== msg:
                 print("DISCONNECT FAIL, USER DOES NOT EXIST\n")
+                return client.RC.USER_ERROR
             elif 2== msg:
                 print("DISCONNECT FAIL, USER NOT CONNECTED\n")
+                return client.RC.USER_ERROR
             elif 3== msg:
                 print("DISCONNECT FAIL\n")
+                return client.RC.ERROR
             else:
                 print("UNEXPECTED!!!!\n")
+                return client.RC.ERROR
             
         except Exception as e:
             sock.close()
@@ -327,6 +405,7 @@ class client :
             return client.RC.ERROR
         
         sock.close()
+        client._conn=""
         return client.RC.OK
 
     # *
@@ -342,7 +421,7 @@ class client :
 
         # testeo de parámetros
 
-        if(type(user)!=str or type(message)!=str or len(message)>255):
+        if(client._me==user or type(user)!=str or type(message)!=str or len(message)>255):
             print("Error en send: Introduce parámetros correctos\n")
             return client.RC.ERROR
 
@@ -390,10 +469,13 @@ class client :
                 print("SEND OK - MESSAGE " + str(id_mensaje))
             elif 1==msg:
                 print("SEND FAIL, USER DOES NOT EXIST\n")
+                return client.RC.USER_ERROR
             elif 2==msg:
                 print("SEND FAIL\n")
+                return client.RC.ERROR
             else:
                 print("UNEXPECTED!!!!\n")
+                return client.RC.ERROR
             
         except Exception as e:
             sock.close()
@@ -501,6 +583,8 @@ class client :
 
                     elif(line[0]=="QUIT") :
                         if (len(line) == 1) :
+                            if (client._conn!=""):
+                                client.disconnect(client._conn)
                             break
                         else :
                             print("Syntax error. Use: QUIT")

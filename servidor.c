@@ -185,7 +185,7 @@ void * worker(void * argum) {
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (setNode(&database, userName, 0)!=0) goto error_register;
+            if (setNode(&database, userName, 0)!=0) {pthread_mutex_unlock(&mutex_db); goto error_register;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
@@ -236,7 +236,7 @@ void * worker(void * argum) {
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (del_user(&database, userName)!=0) goto error_unregister;
+            if (del_user(&database, userName)!=0) {pthread_mutex_unlock(&mutex_db); goto error_unregister;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
@@ -289,7 +289,7 @@ void * worker(void * argum) {
 
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
-        if (get_conn(database, userName, &conn)!=0) goto error_connect;
+        if (get_conn(database, userName, &conn)!=0) {pthread_mutex_unlock(&mutex_db);  goto error_connect;}
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 
@@ -303,7 +303,7 @@ void * worker(void * argum) {
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (set_ip_port(database, userName, ip, (uint16_t)atoi(port))!=0) goto error_connect;
+                if (set_ip_port(database, userName, ip, (uint16_t)atoi(port))!=0) {pthread_mutex_unlock(&mutex_db); goto error_connect;}
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -311,7 +311,7 @@ void * worker(void * argum) {
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (modify_conn(database, userName, 1)!=0) goto error_connect; // 1 conn ; 0 disconn   
+                if (modify_conn(database, userName, 1)!=0) {pthread_mutex_unlock(&mutex_db); goto error_connect;} // 1 conn ; 0 disconn   
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -337,7 +337,7 @@ void * worker(void * argum) {
 
                         pthread_mutex_lock(&mutex_db);
                         /* seccion criticia */
-                        if (get_mssg_pending(database, userName, pending)!=0) goto error_connect;
+                        if (get_mssg_pending(database, userName, pending)!=0) {pthread_mutex_unlock(&mutex_db); free(pending); goto error_connect;}
                         /* fin seccion critica */
                         pthread_mutex_unlock(&mutex_db);
 
@@ -353,13 +353,13 @@ void * worker(void * argum) {
 
                             pthread_mutex_lock(&mutex_db);
                             /* seccion criticia */
-                            if (send_message(sName, userName, id, msg)!=0) goto error_connect;
+                            if (send_message(sName, userName, id, msg)!=0) {pthread_mutex_unlock(&mutex_db); goto error_connect;}
                             /* fin seccion critica */
                             pthread_mutex_unlock(&mutex_db);
                             
                             pthread_mutex_lock(&mutex_db);
                             /* seccion criticia */
-                            if (del_mssg_pending(database, userName, sName, id)!=0) goto error_connect;
+                            if (del_mssg_pending(database, userName, sName, id)!=0) {pthread_mutex_unlock(&mutex_db); goto error_connect;}
                             /* fin seccion critica */
                             pthread_mutex_unlock(&mutex_db);
 
@@ -367,7 +367,7 @@ void * worker(void * argum) {
 
                             pthread_mutex_lock(&mutex_db);
                             /* seccion criticia */
-                            if (get_conn(database, sName, &connS)!=0) goto error_connect;
+                            if (get_conn(database, sName, &connS)!=0) {pthread_mutex_unlock(&mutex_db); goto error_connect;}
                             /* fin seccion critica */
                             pthread_mutex_unlock(&mutex_db);
 
@@ -434,7 +434,7 @@ void * worker(void * argum) {
 
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
-        if (get_conn(database, userName, &conn)!=0) goto error_disconnect;
+        if (get_conn(database, userName, &conn)!=0) {pthread_mutex_unlock(&mutex_db); goto error_disconnect;}
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 
@@ -448,7 +448,7 @@ void * worker(void * argum) {
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (del_ip_port(database, userName)!=0) goto error_disconnect;
+                if (del_ip_port(database, userName)!=0) {pthread_mutex_unlock(&mutex_db); goto error_disconnect;}
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -456,7 +456,7 @@ void * worker(void * argum) {
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (modify_conn(database, userName, 0)!=0) goto error_disconnect; // 1 conn ; 0 disconn   
+                if (modify_conn(database, userName, 0)!=0) {pthread_mutex_unlock(&mutex_db); goto error_disconnect;} // 1 conn ; 0 disconn   
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -513,8 +513,11 @@ void * worker(void * argum) {
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
         int exist=exists_in(database, userName);
+        int existr=exists_in(database, rName);
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
+
+        if (exist==0 || existr==0) exist=0;
 
         switch (exist)
         {
@@ -531,13 +534,13 @@ void * worker(void * argum) {
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (get_id(database, userName, &id)!=0) goto error_send;
+            if (get_id(database, userName, &id)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (add_mssg_pending(database, rName, userName, msg, id)!=0) goto error_send;
+            if (add_mssg_pending(database, rName, userName, msg, id)!=0) {pthread_mutex_unlock(&mutex_db);  goto error_send;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
@@ -547,7 +550,7 @@ void * worker(void * argum) {
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (get_conn(database, rName, &conn)!=0) goto error_send;
+            if (get_conn(database, rName, &conn)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
@@ -555,14 +558,14 @@ void * worker(void * argum) {
             {
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (send_message(userName, rName, id, msg)!=0) goto error_send;
+                if (send_message(userName, rName, id, msg)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
                 message_logs(id, userName, rName, conn);
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (del_mssg_pending(database, rName, userName, id)!=0) goto error_send;
+                if (del_mssg_pending(database, rName, userName, id)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -573,7 +576,7 @@ void * worker(void * argum) {
 
             pthread_mutex_lock(&mutex_db);
             /* seccion criticia */
-            if (get_conn(database, userName, &connU)!=0) goto error_send;
+            if (get_conn(database, userName, &connU)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
             /* fin seccion critica */
             pthread_mutex_unlock(&mutex_db);
 
@@ -586,7 +589,7 @@ void * worker(void * argum) {
 
                 pthread_mutex_lock(&mutex_db);
                 /* seccion criticia */
-                if (modify_id(database, userName)!=0) goto error_send;
+                if (modify_id(database, userName)!=0) {pthread_mutex_unlock(&mutex_db); goto error_send;}
                 /* fin seccion critica */
                 pthread_mutex_unlock(&mutex_db);
 
@@ -615,9 +618,11 @@ void * worker(void * argum) {
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 
+        char* users[MAX_USERS]={0}; // evita errores al hacer free en error_users        
+
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
-        if (get_conn(database, userName, &conn)!=0) goto error_users;
+        if (get_conn(database, userName, &conn)!=0) {pthread_mutex_unlock(&mutex_db); goto error_users;}
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 
@@ -641,12 +646,11 @@ void * worker(void * argum) {
 
         /* 2c.1. obtener usuarios conectados */
         int n;
-        char* users[MAX_USERS]={0};
-        for (int i = 0; i < LENG; i++) users[i] = malloc(LENG);
+        for (int i = 0; i < MAX_USERS; i++) users[i] = malloc(LENG);
 
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
-        if (get_users_conn(database, &n, users)!=0) goto error_users;
+        if (get_users_conn(database, &n, users)!=0) {pthread_mutex_unlock(&mutex_db); goto error_users;}
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 
@@ -659,13 +663,13 @@ void * worker(void * argum) {
         /* 2c.3. enviar usuarios */
         for (int i=0; i<n; i++) if (sock_send(sd, users[i], LENG)<0) goto error_users;
 
-        for (int i = 0; i < LENG; i++) free(users[i]);
+        for (int i = 0; i < MAX_USERS; i++) free(users[i]);
 
         goto end_users; // si llega aqui no ha habido "otros" errores
         
         /* 5. notificar error (2) : otros */
         error_users:
-            for (int i = 0; i < LENG; i++) if (users[i]) free(users[i]);
+            for (int i = 0; i < MAX_USERS; i++) if (users[i]) free(users[i]);
             ret_val=2;
             sock_send(sd, (char*)&ret_val, 1);
             logs(op, userName, "FAIL"); goto finish;
