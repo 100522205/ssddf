@@ -22,7 +22,7 @@ def normalizar():
 
         texto_bueno= " ".join(texto_sin_espacios)
 
-        return {"texto": texto_bueno}
+        return {"texto": texto_bueno}, 200
 
     except Exception as e:
         return {"error": str(e)}, 415

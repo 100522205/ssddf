@@ -12,7 +12,7 @@ log_1_svc(struct log_strct arg1, int *result,  struct svc_req *rqstp)
 {
 
 	if (strcmp(arg1.op, "SENDATTACH") == 0) printf("%s %s %s\n", arg1.uName, arg1.op, arg1.file);
-	else printf("%s %s %s\n", arg1.uName, arg1.op, "");
+	else printf("%s %s\n", arg1.uName, arg1.op);
 	*result = 1;
 	
 	return true;

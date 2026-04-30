@@ -46,8 +46,8 @@ main (int argc, char *argv[])
 		printf("usage: env LOG_RPC_IP=localhost %s\n", argv[0]);
 	}
 
-	logger_1(host, "user-1", "SEND", "");
-	logger_1(host, "user-1", "SEND", "/tmp/file1.txt");
+	logger_1(host, "user-1", "SEND",       "");
+	logger_1(host, "user-1", "SENDATTACH", "/tmp/file1.txt");
 
 	exit (0);
 }
