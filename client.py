@@ -4,6 +4,41 @@ import socket
 import sys
 import threading
 
+# para el web service
+import requests
+
+# método de client para requests de web service
+def preprocesado(texto : str):
+    """
+    Función genérica para preprocesado
+    :param texto: el texto pudiendo tener mal los espacios
+    :return: el texto ya bien 
+    """
+
+    try:
+        r = requests.post(url="http://127.0.0.1:7777/normalizar",
+                        json={ "texto": texto },
+                        headers={ 'Content-type': 'application/json' })
+        
+        # en r nosotros tenemos la respuesta del servicio web a nuestro post
+
+        if(r.status_code==200):
+            # fue correcto 
+            respuesta=r.json()
+
+            texto_limpio=respuesta["texto"]
+            return texto_limpio, 0
+        else:
+            print("\n ERROR EN WEB SERVICE \n")
+            return texto, -1
+    
+    except Exception as e:
+        print("\ERROR INESPERADO EN WEB SERVICE")
+        return texto, -1
+
+
+
+
 class client :
 
     # ******************** TYPES *********************
@@ -424,6 +459,15 @@ class client :
         if(client._conn=="" or client._me==user or type(user)!=str or type(message)!=str or len(message)>255):
             print("Error en send: Introduce parámetros correctos o realiza operación de conexión\n")
             return client.RC.ERROR
+        
+        # corrección del mensaje por el web service
+
+        message = preprocesado(message)
+        if(message[1]<0):
+            print("Error en send: Error en preprocesado de texto\n")
+            return client.RC.ERROR
+
+        message= message[0]
 
         # ahora: creacion de sockets con adress
         try:
