@@ -14,7 +14,14 @@
 #include "logger.h"
 
 void call_log(char * uName, char*op, char*file){
-    CLIENT * clnt = clnt_create("localhost", LOGGER, LOGGERVER, "udp");
+    // primero de nada, ver si tenemos variable de entorno
+
+    char * ip_rpc = getenv("LOG_RPC_IP");
+    // y si no la dan? localhost
+
+    if(ip_rpc==NULL) ip_rpc="localhost";
+
+    CLIENT * clnt = clnt_create(ip_rpc, LOGGER, LOGGERVER, "udp");
     if(clnt==NULL) return;
 
     struct log_strct args;

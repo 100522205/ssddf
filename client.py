@@ -33,7 +33,7 @@ def preprocesado(texto : str):
             return texto, -1
     
     except Exception as e:
-        print("\ERROR INESPERADO EN WEB SERVICE")
+        print("ERROR INESPERADO EN WEB SERVICE", e)
         return texto, -1
 
 
