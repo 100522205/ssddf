@@ -508,8 +508,8 @@ class client :
             msg= int.from_bytes(sock.recv(1), byteorder='big')
             
             if 0==msg:
-                id_bytes = sock.recv(4)
-                id_mensaje = int.from_bytes(id_bytes, byteorder='big')
+                
+                id_mensaje = client.read_string(sock)
                 print("SEND OK - MESSAGE " + str(id_mensaje))
             elif 1==msg:
                 print("SEND FAIL, USER DOES NOT EXIST\n")
@@ -538,8 +538,86 @@ class client :
     # * @return ERROR the user does not exist or another error occurred
     @staticmethod
     def  sendAttach(user,  file,  message) :
-        #  Aun no !
-        return client.RC.ERROR
+        """
+        funcion para enviar un fichero a un usuario
+        :param file: ASUMO que es el nombre
+        """
+
+
+        # testeo de parámetros
+
+        if(client._conn=="" or client._me==user or type(user)!=str or type(message)!=str or len(message)>255 or type(file)!=str or file=="" or len(file)>255):
+            print("Error en sendattach: Introduce parámetros correctos o realiza operación de conexión\n")
+            return client.RC.ERROR
+        
+        # corrección del mensaje por el web service
+
+        message = preprocesado(message)
+        if(message[1]<0):
+            print("Error en sendattach: Error en preprocesado de texto\n")
+            return client.RC.ERROR
+
+        message= message[0]
+
+        # ahora: creacion de sockets con adress
+        try:
+            # comunicación genérica
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address = ('localhost', 0) # al darle 0, el SO nos da uno libre
+            sock.bind(address)
+
+        except Exception as e:
+            print("Error en sendattach: Fallo en creación de socket"+str(e))
+            return client.RC.ERROR
+
+        # ahora, a la conexión
+
+        try:
+            address_servidor = (client._server, client._port)
+            sock.connect(address_servidor)
+
+        except Exception as e:
+            print("Error en sendattach: Fallo en conexión con servidor"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca enviar dos cadenas, CONNECT y el nombre
+
+        try:
+            mensajes = ["SENDATTACH", client._me, user, message, file]
+            for m in mensajes:
+                sock.sendall((m+"\0").encode('utf-8'))
+
+        except Exception as e:
+            sock.close()
+            print("Error en sendattach: Fallo en envio de cadenas"+str(e))
+            return client.RC.ERROR
+
+        # ahora toca recibir el byte de resultado
+
+        try:
+            msg= int.from_bytes(sock.recv(1), byteorder='big')
+            
+            if 0==msg:
+                # sabemos que fue bien, podemos recibir el ID que le ha asignado el servidor 
+                id= client.read_string(sock)
+                print("SENDATTACH OK - MESSAGE " + str(id))
+            elif 1==msg:
+                print("SENDATTACH FAIL, USER DOES NOT EXIST\n")
+                return client.RC.USER_ERROR
+            elif 2==msg:
+                print("SENDATTACH FAIL\n")
+                return client.RC.ERROR
+            else:
+                print("UNEXPECTED!!!!\n")
+                return client.RC.ERROR
+            
+        except Exception as e:
+            sock.close()
+            print("Error en sendattach: Fallo en recepción"+str(e))
+            return client.RC.ERROR
+        
+        sock.close()
+        return client.RC.OK
     
     # *
     # * @param message - Message to be sent
@@ -561,6 +639,17 @@ class client :
                 print("MESSAGE "+str(my_id)+ " FROM "+str(remitente) + "\n"+str(contenido)+ "\nEND")
                 
                 print("c> ", end="", flush=True)
+
+            elif operacion=="SEND_MESS_ACK":
+                msg_id = client.read_string(socket)
+                # no imprimimos nada porque el enunciado no lo dice
+            elif operacion== "SEND_MESSAGE_ATTACH":
+                remitente=client.read_string(socket)
+                my_id=client.read_string(socket)
+                contenido=client.read_string(socket)
+                fichero=client.read_string(socket)
+                print(f"\nFILE {fichero} FROM {remitente} (ID {my_id}): {contenido}\n") 
+                # lo dice asi el enunciado (?) mirar
             
             socket.close()
 

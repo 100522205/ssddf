@@ -3,7 +3,7 @@
 // Archivo .h
 // Original de aula global
 // Este es una derivacion de dicho archivo
-#define LENG 255
+#define LENG 256
 
 #include <stdint.h>
 #include "cJSON.h"
@@ -13,6 +13,7 @@ struct msgdata {
 	char 			sName[LENG];
 	unsigned int	id;
 	char			msg[LENG];
+	char 			file[256];
 };
 
 
@@ -57,7 +58,7 @@ int modify_conn(List l, char* userName,  uint8_t conn);
 
 int modify_id(List l, char* userName);
 
-int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int id);
+int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int id, char * file);
 
 int del_mssg_pending(List l, char* rName, char* sName, unsigned int id);
 

@@ -1,37 +1,56 @@
 # Variables de compilador y flags
 CC = gcc
-CFLAGS = -Wall -Wextra -g -I.
-LDFLAGS = -lpthread
+CFLAGS = -Wall -Wextra -g -I. -I/usr/include/tirpc
+LDFLAGS = -lpthread -ltirpc
 
-# Directorio para archivos objeto
+# para rpc
+
+RPC_FILE= logger.x
+
+# los stubs que deben borrarse y regenerarse
+RPC_STUBS= logger_clnt.c logger_svc.c logger_xdr.c logger.h
+
+# directorio para .o
 OBJDIR = .o
 
-# Ejecutables finales
-TARGET_SERV = server
+# objetos para el servidor final
+RPC_OBJS_SERV = $(OBJDIR)/logger_clnt.o $(OBJDIR)/logger_xdr.o 
 
-# Archivos fuente
-COMMON_SRC = list.c sock.c cJSON.c
-SERV_SRC = servidor.c $(COMMON_SRC)
+# ejecutables
+TARGET_SERV= server 
+TARGET_RPC_LOG = logger_server 
 
-# Generar nombres de archivos .o dentro de $(OBJDIR)
-SERV_OBJS = $(addprefix $(OBJDIR)/, $(SERV_SRC:.c=.o))
+# archivos fuente
+COMMON_SRC= list.c sock.c cJSON.c 
+SERV_SRC = servidor.c $(COMMON_SRC) 
 
-# Regla principal
-all: $(OBJDIR) $(TARGET_SERV)
-# Crear el directorio .o si no existe
+# generar nombres de archivos .o
+SERV_OBJS = $(addprefix $(OBJDIR)/, $(SERV_SRC:.c=.o)) $(RPC_OBJS_SERV)
+RPC_LOGS_OBJS = $(OBJDIR)/logger_svc.o $(OBJDIR)/logger_xdr.o $(OBJDIR)/server-rpc.o 
+
+# ppal
+
+all: $(OBJDIR) rpc $(TARGET_SERV) $(TARGET_RPC_LOG)
+
+# para el rcp
+
+$(RPC_STUBS): $(RPC_FILE)
+	rpcgen -NM $(RPC_FILE)
+
+rpc: $(RPC_STUBS)
+
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-# Enlace del servidor
+# enlace del servidor
 $(TARGET_SERV): $(SERV_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+$(TARGET_RPC_LOG): $(RPC_LOGS_OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Regla genérica para compilar archivos .c a .o en la carpeta $(OBJDIR)
+# compilar .c a .o
 $(OBJDIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Limpiar archivos generados
 clean:
-	rm -rf $(OBJDIR) $(TARGET_SERV)
-
-.PHONY: all clean
+	rm -rf $(OBJDIR) $(TARGET_SERV) $(TARGET_RPC_LOG) $(RPC_STUBS)

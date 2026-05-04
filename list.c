@@ -191,8 +191,8 @@ int toFile(List l, char * name) {
             cJSON* msgTree = cJSON_CreateObject(); // ARBOL DE MENSAJES PENDIENTES
             for (int i=0; i<aux->num_pending; i++) {
                 // CLAVE: "<sName>,<id>"
-                char key[LENG+20];
-                sprintf(key, "%s,%u", aux->pending[i].sName, aux->pending[i].id);
+                char key[LENG*2 + 50];
+                sprintf(key, "%s,%u,%s", aux->pending[i].sName, aux->pending[i].id, aux->pending[i].file);
 
                 // AÑADIR DATOS
                 cJSON_AddStringToObject(msgTree, key, aux->pending[i].msg);
@@ -269,7 +269,7 @@ int fromFile(List * l, char * name) {
             cJSON* msgNode = NULL;
             cJSON_ArrayForEach(msgNode, pendingJson) {
                 if (i < newNode->num_pending) {
-                    sscanf(msgNode->string, "%[^,],%u", newNode->pending[i].sName, &newNode->pending[i].id);
+                    sscanf(msgNode->string, "%[^,],%u,%[^,]", newNode->pending[i].sName, &newNode->pending[i].id, newNode->pending[i].file);
                     strncpy(newNode->pending[i].msg, msgNode->valuestring, LENG);
                     i++;
                 }
@@ -346,15 +346,15 @@ int modify_id(List l, char* userName) {
 }
 
 
-int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int id) {
+int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int id, char * file) {
     if (l == NULL) return -1;
 
     struct Node *aux = l;
     while (aux != NULL) {
         if (strcmp(aux->userName, rName) == 0) {
             // 1. Intentar ampliar la memoria para un mensaje más
-            struct msgdata *temp = realloc(aux->pending, sizeof(struct msgdata) * (aux->num_pending + 1));
-            
+            struct msgdata *temp = realloc(aux->pending, sizeof(struct msgdata) * (aux->num_pending + 1));            
+
             if (temp == NULL) return -1; // Fallo de memoria
 
             aux->pending = temp;
@@ -368,6 +368,12 @@ int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int i
             nuevo->msg[LENG - 1] = '\0';
             
             nuevo->id = id;
+
+                        
+            // copiar el nombre del fichero
+
+            strncpy(nuevo->file, file, LENG);
+            nuevo->file[LENG-1] = '\0';
 
             // 3. Incrementar el contador
             aux->num_pending++;
@@ -494,3 +500,25 @@ int destroy_list(List *l){
 	return 0;
 }	
 
+int get_users_conn_full(List l, int* n, char** users) {
+    /* Funcion para obtener el numero y los nombres de usuarios conectados */
+    if (l == NULL || n == NULL || users == NULL) return -1;
+
+    int count = 0;
+    struct Node *aux = l;
+
+    // Recorremos la lista buscando usuarios con conn == 1
+    while (aux != NULL) {
+        if (aux->conn == 1) {
+            // Copiamos el userName al array de punteros
+            sprintf(users[count], "%s :: %s :: %d", aux->userName, aux->ip, aux->port);
+            count++;
+        }
+        aux = aux->next;
+    }
+
+    // Guardamos el total en el puntero n
+    *n = count;
+
+    return 0; // Exito
+}
