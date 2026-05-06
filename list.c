@@ -371,9 +371,14 @@ int add_mssg_pending(List l, char* rName, char* sName, char* msg, unsigned int i
 
                         
             // copiar el nombre del fichero
-
-            strncpy(nuevo->file, file, LENG);
-            nuevo->file[LENG-1] = '\0';
+            // arreglo bug segmentation
+            if (file!=NULL){
+                strncpy(nuevo->file, file, LENG);
+                nuevo->file[LENG-1] = '\0';
+            }
+            else{
+                nuevo->file[0]='\0';
+            }
 
             // 3. Incrementar el contador
             aux->num_pending++;

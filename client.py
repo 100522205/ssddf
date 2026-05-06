@@ -58,6 +58,7 @@ class client :
     _continue = 1
     _me = ""
     _conn = ""
+    _users_db = {}
 
     # ******************** METHODS *******************
     # *
@@ -339,6 +340,17 @@ class client :
                 for i in range(n_user):
                     name = sock.recv(255).decode('utf-8').rstrip('\x00')
                     print(name)
+
+                    parts = [p.strip() for p in name.split("::")]
+                    if len(name) == 3:
+                        # por usuario :: ip :: puerto
+
+                        user_name = parts[0]
+                        user_ip = parts[1]
+                        user_port = int(parts[2])
+
+                        client._users_db[user_name] = (user_ip, user_port)
+
             elif 1==msg:
                 print("FAIL, USER IS NOT CONNECTED\n")
                 return client.RC.USER_ERROR
@@ -649,12 +661,52 @@ class client :
                 contenido=client.read_string(socket)
                 fichero=client.read_string(socket)
                 print(f"\nFILE {fichero} FROM {remitente} (ID {my_id}): {contenido}\n") 
-                # lo dice asi el enunciado (?) mirar
+
+            elif operacion == "GET_FILE":
+                _ = client.read_string(socket)
+                filename = client.read_string(socket)
+
+                if os.path.exists(filename):
+                    with open(filename, "rb") as f:
+                        socket.sendall(f.read())
+
             
             socket.close()
 
         socket_th.close()
         return client.RC.OK
+
+
+    @staticmethod
+    def get_file(user, remote_file, local_file):
+        """
+        Funcion para obtener el file, paso final
+        """
+
+        if user not in client._users_db:
+            # puede que esté pero no lo tenga
+            client.users()
+            if user not in client._users_db:
+                print("FILE TRANSFER FAILED, user not connected.")
+                return
+            
+        ip, puerto= client._users_db[user]
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.connect((ip,puerto))
+                s.sendall(f"GET_FILE\0{client._me}\0{remote_file}\0".enconde())
+
+                # pasamos a escribir el archivo adjunto
+                with open(local_file, "wb") as f:
+                    while 1:
+                        data = s.recv(4096)
+                        if not data: 
+                            break
+                        f.write(data)
+                    print(f"FILE {remote_file} NOW IN {local_file}")
+        
+        except Exception as e:
+            print("FILE TRANSFER FAIL: "+ str(e))
 
     # *
     # **
@@ -723,6 +775,11 @@ class client :
                             break
                         else :
                             print("Syntax error. Use: QUIT")
+                    elif(line[0]=="GETFILE"):
+                        if(len(line)==4):
+                            client.get_file(line[1], line[2], line[3])
+                        else:
+                            print("Usage: GETFILE <username> <remote> <local>")
                     else :
                         print("Error: command " + line[0] + " not valid.")
             except Exception as e:
