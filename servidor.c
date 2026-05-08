@@ -771,6 +771,19 @@ void * worker(void * argum) {
         pthread_mutex_lock(&mutex_db);
         /* seccion criticia */
         int res_users = get_users_conn(database, &n, users);
+
+        if(res_users==0){
+            for(int i=0; i<n;++i){
+                char ip_aux[16];
+                uint16_t port_aux;
+
+                if(get_ip_port(database, users[i], ip_aux, &port_aux)==0){
+                    char temp[LENG];
+                    snprintf(temp, LENG, "%s::%s::%u", users[i], ip_aux, port_aux);
+                    strncpy(users[i], temp, LENG);
+                }
+            }
+        }
         /* fin seccion critica */
         pthread_mutex_unlock(&mutex_db);
 

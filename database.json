@@ -1,2 +1,14 @@
 {
+	"Pepe":	{
+		"conn":	0,
+		"id":	0,
+		"num_pending":	0,
+		"pending":	null
+	},
+	"Juan":	{
+		"conn":	0,
+		"id":	4,
+		"num_pending":	0,
+		"pending":	null
+	}
 }

@@ -3,6 +3,7 @@ import argparse
 import socket
 import sys
 import threading
+import os
 
 # para el web service
 import requests
@@ -338,11 +339,13 @@ class client :
                 n_user = int.from_bytes(n_user_bytes, byteorder='big')
                 print("("+ str(n_user)+" users connected) OK")
                 for i in range(n_user):
-                    name = sock.recv(255).decode('utf-8').rstrip('\x00')
-                    print(name)
+                    name = sock.recv(256).decode('utf-8').rstrip('\x00')
 
                     parts = [p.strip() for p in name.split("::")]
-                    if len(name) == 3:
+
+                    print(parts[0])
+
+                    if len(parts) == 3:
                         # por usuario :: ip :: puerto
 
                         user_name = parts[0]
@@ -660,7 +663,7 @@ class client :
                 my_id=client.read_string(socket)
                 contenido=client.read_string(socket)
                 fichero=client.read_string(socket)
-                print(f"\nFILE {fichero} FROM {remitente} (ID {my_id}): {contenido}\n") 
+                print(f"MESSAGE {my_id} FROM {remitente}\n{contenido}\nEND\nFILE {fichero}") 
 
             elif operacion == "GET_FILE":
                 _ = client.read_string(socket)
@@ -694,7 +697,7 @@ class client :
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((ip,puerto))
-                s.sendall(f"GET_FILE\0{client._me}\0{remote_file}\0".enconde())
+                s.sendall(f"GET_FILE\0{client._me}\0{remote_file}\0".encode("utf-8"))
 
                 # pasamos a escribir el archivo adjunto
                 with open(local_file, "wb") as f:
@@ -703,7 +706,6 @@ class client :
                         if not data: 
                             break
                         f.write(data)
-                    print(f"FILE {remote_file} NOW IN {local_file}")
         
         except Exception as e:
             print("FILE TRANSFER FAIL: "+ str(e))
@@ -762,11 +764,11 @@ class client :
 
                     elif(line[0]=="SENDATTACH") :
                         if (len(line) >= 4) :
-                            #  Remove first two words
-                            message = ' '.join(line[3:])
-                            client.sendAttach(line[1], line[2], message)
+                            filename= line[-1]
+                            message = ' '.join(line[2:-1])
+                            client.sendAttach(line[1], filename, message)
                         else :
-                            print("Syntax error. Usage: SENDATTACH <userName> <filename> <message>")
+                            print("Syntax error. Usage: SENDATTACH <userName> <message> <filename>")
 
                     elif(line[0]=="QUIT") :
                         if (len(line) == 1) :
